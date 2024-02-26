@@ -13,13 +13,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [WeightLog::class, Exercise::class, ExerciseSet::class, WorkoutLog::class],
+    entities = [WeightLog::class, Exercise::class, ExerciseLog::class, ExerciseSet::class, WorkoutLog::class],
     version = 1
 )
 @TypeConverters(Converters::class)
 abstract class AppDb : RoomDatabase() {
     abstract fun weightLogDao(): WeightLogDao
     abstract fun exerciseDao(): ExerciseDao
+    abstract fun exerciseLogDao(): ExerciseLogDao
     abstract fun workoutLogDao(): WorkoutLogDao
     abstract fun exerciseSetDao(): ExerciseSetDao
 

@@ -10,6 +10,7 @@ import androidx.room.Query
 import androidx.room.Update
 import java.time.Instant
 
+// Entities
 @Entity(tableName = "workout_logs")
 data class WorkoutLog(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -30,11 +31,20 @@ data class Exercise(
     @ColumnInfo(name = "quantity") val quantity: ExerciseQuantity,
 )
 
+@Entity(tableName = "exercise_logs")
+data class ExerciseLog(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @ColumnInfo(name = "created_at") val createdAt: Instant = Instant.now(),
+    @ColumnInfo(name = "exercise_id") val exerciseId: Int,
+    @ColumnInfo(name = "workout_id") val workoutId: Int,
+)
+
 @Entity(tableName = "exercise_sets")
 data class ExerciseSet(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     @ColumnInfo(name = "created_at") val createdAt: Instant = Instant.now(),
     @ColumnInfo(name = "exercise_id") val exerciseId: Int,
+    @ColumnInfo(name = "exercise_log_id") val exerciseLogId: Int,
     @ColumnInfo(name = "workout_id") val workoutId: Int,
     @ColumnInfo(name = "reps") val reps: Int,
     @ColumnInfo(name = "weight") val weight: Float? = null,
@@ -42,6 +52,21 @@ data class ExerciseSet(
     @ColumnInfo(name = "comment") val comment: String = "",
 )
 
+// Join Types
+data class ExerciseLogDisplay(
+    val count: Int,
+    val name: String,
+    val exerciseId: Int,
+    val exerciseLogId: Int,
+)
+
+data class WorkoutWithSetCount(
+    val name: String,
+    val count: Int,
+    val workoutId: Int,
+)
+
+// Data Access Objects
 @Dao
 interface WorkoutLogDao {
     @Query("SELECT * FROM workout_logs ORDER BY created_at DESC")
@@ -103,7 +128,7 @@ interface WorkoutLogDao {
 @Dao
 interface ExerciseDao {
     @Query("SELECT * FROM exercises WHERE id = :id")
-    suspend fun get(id: Int): Exercise
+    suspend fun get(id: Int): Exercise?
 
     @Query("SELECT * FROM exercises ORDER BY created_at DESC")
     suspend fun getAll(): List<Exercise>
@@ -124,17 +149,61 @@ interface ExerciseDao {
     suspend fun delete(vararg exercises: Exercise)
 }
 
-data class SetGroup(
-    val count: Int,
-    val name: String,
-    val exerciseId: Int,
-)
+@Dao
+interface ExerciseLogDao {
+    @Query("SELECT * FROM exercise_logs ORDER BY created_at DESC")
+    suspend fun getAll(): List<ExerciseLog>
 
-data class WorkoutWithSetCount(
-    val name: String,
-    val count: Int,
-    val workoutId: Int,
-)
+    @Query("SELECT * FROM exercise_logs WHERE id = :id")
+    suspend fun getById(id: Int): ExerciseLog?
+
+
+    @Query(
+        "SELECT" +
+        "   exercises.name as name," +
+        "   exercise_id as exerciseId," +
+        "   exercise_logs.id as exerciseLogId, " +
+        "   IFNULL(inner_count, 0) as count " +
+        "FROM" +
+        "   exercise_logs " +
+        "   LEFT JOIN" +
+        "      (" +
+        "         SELECT" +
+        "            exercise_logs.id as exerciseLogId," +
+        "            COUNT(*) as inner_count " +
+        "         FROM" +
+        "            exercise_logs " +
+        "            JOIN" +
+        "               exercise_sets " +
+        "               ON exercise_logs.id = exercise_sets.exercise_log_id " +
+        "            GROUP BY exercise_logs.exercise_id" +
+        "      )" +
+        "      ON exercise_logs.id = exerciseLogId" +
+        "   JOIN" +
+        "      exercises " +
+        "      ON exercise_logs.exercise_id = exercises.id " +
+        "WHERE" +
+        "   exercise_logs.workout_id = :workoutId " +
+        "GROUP BY" +
+        "   exercise_logs.id"
+    )
+    suspend fun getInWorkoutWithSetCounts(workoutId: Int): List<ExerciseLogDisplay>
+
+    @Query("DELETE FROM exercise_logs WHERE id = :id")
+    suspend fun deleteById(id: Int)
+
+    @Insert
+    suspend fun insert(vararg exerciseLogs: ExerciseLog)
+
+    @Update
+    suspend fun update(vararg exerciseLogs: ExerciseLog)
+
+    @Delete
+    suspend fun delete(vararg exerciseLogs: ExerciseLog)
+
+    @Query("SELECT * FROM exercise_logs WHERE workout_id = :id ORDER BY created_at DESC")
+    suspend fun getInWorkout(id: Int): List<ExerciseLog>
+}
 
 @Dao
 interface ExerciseSetDao {
@@ -156,8 +225,8 @@ interface ExerciseSetDao {
         exerciseId: Int
     ): Map<ExerciseSet, Exercise>
 
-    @Query("SELECT exercises.name as name, exercise_id as exerciseId, COUNT(*) as count FROM exercise_sets JOIN exercises ON exercise_id = exercises.id WHERE workout_id = :workoutId GROUP BY exercise_id")
-    suspend fun countByExercise(workoutId: Int): List<SetGroup>
+    @Query("SELECT * FROM exercise_sets WHERE exercise_log_id = :exerciseLogId")
+    suspend fun getAllForExerciseLog(exerciseLogId: Int): List<ExerciseSet>
 
     @Insert
     suspend fun insert(vararg sets: ExerciseSet)
@@ -167,4 +236,5 @@ interface ExerciseSetDao {
 
     @Delete
     suspend fun delete(vararg sets: ExerciseSet)
+
 }

@@ -144,6 +144,7 @@ fun ExerciseSetLogger(viewModel: MainViewModel) {
                                 viewModel.createExerciseSet(
                                     state.workoutLog,
                                     state.modifyingExercise!!,
+                                    state.modifyingExerciseLog!!,
                                     weight,
                                     reps
                                 )
@@ -151,7 +152,7 @@ fun ExerciseSetLogger(viewModel: MainViewModel) {
                                 viewModel.updateExerciseSet(
                                     modifyingSet!!.copy(weight = weight, reps = reps),
                                 )
-                                viewModel.setActiveExercise(state.modifyingExercise)
+                                viewModel.setActiveExerciseLog(state.modifyingExerciseLog!!)
                                 modifyingSet = null
                                 weight = 0.0f
                                 reps = 0
@@ -191,7 +192,7 @@ fun ExerciseSetLogger(viewModel: MainViewModel) {
                     Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .background(
-                            if (modifyingSet?.id == state.matchingSets.keys.toList()[i].id)
+                            if (modifyingSet?.id == state.matchingSets[i].id)
                                 LightBlue.copy(alpha = 0.2f)
                             else
                                 Color.Transparent
@@ -204,8 +205,7 @@ fun ExerciseSetLogger(viewModel: MainViewModel) {
                     ExerciseSetCell(
                         row = i,
                         col = j,
-                        exercise = state.matchingSets.entries.toList()[i].value,
-                        exSet = state.matchingSets.entries.toList()[i].key,
+                        exSet = state.matchingSets[i],
                     )
                 },
                 alignments = listOf(
@@ -216,11 +216,10 @@ fun ExerciseSetLogger(viewModel: MainViewModel) {
                     TableAlignment.Left,
                 ),
                 onRowClick = { i ->
-                    val list = state.matchingSets.entries.toList()
-                    if (modifyingSet?.id == list[i].key.id) {
+                    if (modifyingSet?.id == state.matchingSets[i].id) {
                         modifyingSet = null
                     } else {
-                        modifyingSet = list[i].key
+                        modifyingSet = state.matchingSets[i]
                         weight = modifyingSet!!.weight!!
                         reps = modifyingSet!!.reps
                     }
@@ -239,7 +238,6 @@ fun ExerciseSetLogger(viewModel: MainViewModel) {
 fun ExerciseSetCell(
     row: Int,
     col: Int,
-    exercise: Exercise,
     exSet: ExerciseSet
 ) {
     val bigFontSize = 22

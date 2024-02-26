@@ -1,7 +1,6 @@
 package com.uden.tau.main
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
@@ -20,13 +19,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.absoluteOffset
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,7 +57,6 @@ import com.uden.tau.ui.theme.DarkBlue
 import com.uden.tau.ui.theme.LightBlue
 import com.uden.tau.ui.theme.TauTheme
 import java.time.format.DateTimeFormatter
-import kotlin.math.absoluteValue
 
 class MainActivity : ComponentActivity() {
     private lateinit var viewModel: MainViewModel
@@ -77,12 +71,12 @@ class MainActivity : ComponentActivity() {
                     viewModel.openPanel(VisiblePanel.OVERVIEW)
                 }
                 VisiblePanel.WORKOUT -> {
-                    if (viewModel.workoutOverViewState.value?.modifyingExercise != null) {
-                        viewModel.setActiveExercise(null)
-                        viewModel.findMatchingSetGroups(viewModel.workoutOverViewState.value!!.workoutLog)
+                    if (viewModel.workoutOverViewState.value?.modifyingExerciseLog != null) {
+                        viewModel.setActiveExerciseLog(null)
+                        //viewModel.findMatchingSetGroups(viewModel.workoutOverViewState.value!!.workoutLog)
                     } else if (viewModel.workoutOverViewState.value?.addingSet != null) {
                         viewModel.workoutAddEntry(null)
-                        viewModel.findMatchingSetGroups(viewModel.workoutOverViewState.value!!.workoutLog)
+                        //viewModel.findMatchingSetGroups(viewModel.workoutOverViewState.value!!.workoutLog)
                     } else {
                         viewModel.changeDate(viewModel.overviewState.value?.activeDate)
                         viewModel.openPanel(VisiblePanel.OVERVIEW)
@@ -209,7 +203,7 @@ fun MainOverview(viewModel: MainViewModel) {
                                 },
                                 onLongClickLabel = "",
                             ),
-                            onDeleteClick = { viewModel.deleteLog(log) }
+                            onDeleteClick = { viewModel.deleteWeightLog(log) }
                         )
                     }
                 }

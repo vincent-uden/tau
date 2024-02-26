@@ -1,16 +1,17 @@
 package com.uden.tau.main
 
 import android.app.Application
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.uden.tau.DateFormat
+import com.uden.tau.ULog
 import com.uden.tau.db.AppDb
 import com.uden.tau.db.Exercise
+import com.uden.tau.db.ExerciseLog
+import com.uden.tau.db.ExerciseLogDisplay
 import com.uden.tau.db.ExerciseSet
-import com.uden.tau.db.SetGroup
 import com.uden.tau.db.WeightLog
 import com.uden.tau.db.WorkoutLog
 import com.uden.tau.db.WorkoutWithSetCount
@@ -38,12 +39,13 @@ data class OverviewState(
 data class WorkoutOverViewState(
     val workoutLog: WorkoutLog,
     val sets: List<ExerciseSet>,
-    val setGroups: List<SetGroup>,
+    val exerciseLogs: List<ExerciseLogDisplay>,
     val addingSet: WorkoutAddingEntry?,
     val matchingExercises: List<Exercise>,
 
     val modifyingExercise: Exercise?,
-    val matchingSets: Map<ExerciseSet, Exercise>,
+    val modifyingExerciseLog: ExerciseLog?,
+    val matchingSets: List<ExerciseSet>,
     val selectedSetGroup: Int?,
 )
 
@@ -54,7 +56,8 @@ enum class VisiblePanel {
 }
 
 enum class WorkoutAddingEntry {
-    SET,
+    PENDING,
+    EXERCISE,
     SUPERSET,
 }
 
@@ -86,7 +89,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             null,
             listOf(),
             null,
-            mapOf(),
+            null,
+            listOf(),
             null,
         )
     )
@@ -97,88 +101,144 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         changeDate(_overviewState.value!!.activeDate)
     }
 
-    fun toggleAddingEntry() {
-        when (_state.value!!.visiblePanel) {
-            VisiblePanel.OVERVIEW, VisiblePanel.WEIGHT_LOG -> {
-                _overviewState.value?.let {
-                    _overviewState.value =
-                        _overviewState.value?.copy(addingEntry = !it.addingEntry)
-                }
-            }
-
-            else -> {}
-        }
-    }
-
-    fun workoutAddEntry(type: WorkoutAddingEntry?) {
-        updateWorkoutOverViewState(_workoutOverViewState.value!!.copy(addingSet = type))
-    }
-
-    fun openPanel(panel: VisiblePanel) {
-        updateMainState(state.value!!.copy(visiblePanel = panel))
-    }
-
-    fun createWeightLog(timestamp: Instant, weight: Float) {
-        viewModelScope.launch(Dispatchers.IO) {
-            db.weightLogDao()
-                .insert(WeightLog(createdAt = timestamp, weight = weight))
-            refreshLogs()
-        }
-    }
-
-    fun createWorkoutLog() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val now = Instant.now()
-            val newLog = db.workoutLogDao().getById(
-                db.workoutLogDao().insert(
-                    WorkoutLog(
-                        name = formatInstant(
-                            DateFormat.Date,
-                            now
-                        ) + " Workout"
-                    )
-                )[0].toInt()
-            )
-            updateWorkoutOverViewState(
-                _workoutOverViewState.value!!.copy(workoutLog = newLog!!)
-            )
-            openPanel(VisiblePanel.WORKOUT)
-        }
-    }
-
-    fun openWorkoutLog(workoutId: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val log = db.workoutLogDao().getById(workoutId)
-            log?.let {
-                updateWorkoutOverViewState(
-                    _workoutOverViewState.value!!.copy(workoutLog = log)
-                )
-                findMatchingSetGroups(log)
-                openPanel(VisiblePanel.WORKOUT)
-            }
-        }
-    }
-
-
     fun changeDate(newDate: LocalDate?) {
         if (newDate == null) {
             return
         }
         _overviewState.value?.let {
             val from = newDate.atStartOfDay().atZone(ZoneId.systemDefault())
-                .toInstant()
+                    .toInstant()
             val to = newDate.plusDays(1).atStartOfDay()
-                .atZone(ZoneId.systemDefault()).toInstant()
+                    .atZone(ZoneId.systemDefault()).toInstant()
             viewModelScope.launch(Dispatchers.IO) {
                 val logs = db.weightLogDao().getAllInDateRange(from, to)
-                val workoutLogs = db.workoutLogDao().getAllInDateRangeWithSetCounts(from, to)
+                val workoutLogs =
+                        db.workoutLogDao().getAllInDateRangeWithSetCounts(from, to)
                 updateOverviewState(
-                    overviewState.value!!.copy(
-                        activeDate = newDate,
-                        visibleLogs = logs,
-                        visibleWorkoutLogs = workoutLogs
+                        overviewState.value!!.copy(
+                                activeDate = newDate,
+                                visibleLogs = logs,
+                                visibleWorkoutLogs = workoutLogs
+                        )
+                )
+            }
+        }
+    }
+
+    fun createExerciseSet(
+            workoutLog: WorkoutLog,
+            exercise: Exercise,
+            exerciseLog: ExerciseLog,
+            weight: Float,
+            reps: Int
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.exerciseSetDao().insert(
+                    ExerciseSet(
+                            workoutId = workoutLog.id,
+                            exerciseId = exercise.id,
+                            exerciseLogId = exerciseLog.id,
+                            weight = weight,
+                            reps = reps,
+                    )
+            )
+            updateWorkoutOverViewState(
+                    _workoutOverViewState.value!!.copy(
+                            matchingSets = findMatchingSets(exerciseLog)
+                    )
+            )
+        }
+    }
+
+
+    fun createWeightLog(timestamp: Instant, weight: Float) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.weightLogDao()
+                    .insert(WeightLog(createdAt = timestamp, weight = weight))
+            refreshLogs()
+        }
+    }
+
+
+    fun createWorkoutLog() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = Instant.now()
+            val newLog = db.workoutLogDao().getById(
+                    db.workoutLogDao().insert(
+                            WorkoutLog(
+                                    name = formatInstant(
+                                            DateFormat.Date,
+                                            now
+                                    ) + " Workout"
+                            )
+                    )[0].toInt()
+            )
+            updateWorkoutOverViewState(
+                    _workoutOverViewState.value!!.copy(workoutLog = newLog!!)
+            )
+            openPanel(VisiblePanel.WORKOUT)
+        }
+    }
+
+    fun deleteExerciseSet(exerciseSet: ExerciseSet) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.exerciseSetDao().delete(exerciseSet)
+            updateWorkoutOverViewState(
+                    _workoutOverViewState.value!!.copy(
+                            matchingSets = findMatchingSets(
+                                    _workoutOverViewState.value!!.modifyingExerciseLog
+                            )
+                    )
+            )
+        }
+    }
+
+    fun deleteExerciseLog(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.exerciseSetDao().delete(*db.exerciseSetDao().getAllForExerciseLog(id).map { it }.toTypedArray())
+            db.exerciseLogDao().deleteById(id)
+            updateWorkoutOverViewState(
+                _workoutOverViewState.value!!.copy(
+                    exerciseLogs = findMatchingSetGroups(_workoutOverViewState.value!!.workoutLog)
+                )
+            )
+        }
+    }
+
+    fun deleteWeightLog(log: WeightLog) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.weightLogDao().delete(log)
+            refreshLogs()
+        }
+        selectLog(null)
+    }
+
+    fun deleteWorkoutLog(id: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.exerciseSetDao().delete(*db.exerciseSetDao().getAllForWorkout(id).map { it }.toTypedArray())
+            db.exerciseLogDao().delete(*db.exerciseLogDao().getInWorkout(id).map { it }.toTypedArray())
+            db.workoutLogDao().deleteById(id)
+            refreshLogs()
+        }
+        selectLog(null)
+    }
+
+    fun openPanel(panel: VisiblePanel) {
+        updateMainState(state.value!!.copy(visiblePanel = panel))
+    }
+
+
+    fun openWorkoutLog(workoutId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val log = db.workoutLogDao().getById(workoutId)
+            log?.let {
+                updateWorkoutOverViewState(
+                    _workoutOverViewState.value!!.copy(
+                        workoutLog = log,
+                        exerciseLogs = findMatchingSetGroups(log)
                     )
                 )
+                openPanel(VisiblePanel.WORKOUT)
             }
         }
     }
@@ -206,62 +266,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteLog(log: WeightLog) {
-        viewModelScope.launch(Dispatchers.IO) {
-            db.weightLogDao().delete(log)
-            refreshLogs()
-        }
-        selectLog(null)
-    }
 
-    fun deleteWorkoutLog(id: Int) {
+    fun setActiveExerciseLog(exerciseLog: ExerciseLog?) {
         viewModelScope.launch(Dispatchers.IO) {
-            db.workoutLogDao().deleteById(id)
-            refreshLogs()
-        }
-        selectLog(null)
-    }
+            val exercise = db.exerciseDao().get(exerciseLog?.exerciseId ?: 0)
+            ULog.d("$exerciseLog $exercise")
 
-    private fun findMatchingSets(workoutLog: WorkoutLog, exercise: Exercise?) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val sets = db.exerciseSetDao()
-                .getAllForWorkoutAndExercise(
-                    workoutLog.id,
-                    exercise?.id ?: -1
-                )
-            updateWorkoutOverViewState(
-                _workoutOverViewState.value!!.copy(matchingSets = sets)
-            )
-        }
-    }
-
-    fun findMatchingSetGroups(workoutLog: WorkoutLog) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val sets = db.exerciseSetDao().countByExercise(workoutLog.id)
             updateWorkoutOverViewState(
                 _workoutOverViewState.value!!.copy(
-                    setGroups = sets
+                    modifyingExercise = exercise,
+                    modifyingExerciseLog = exerciseLog,
+                    matchingSets = findMatchingSets(exerciseLog),
                 )
             )
         }
     }
 
-    fun createExerciseSet(
-        workoutLog: WorkoutLog,
-        exercise: Exercise,
-        weight: Float,
-        reps: Int
-    ) {
+    fun setActiveExerciseLogById(id: Int) {
         viewModelScope.launch(Dispatchers.IO) {
-            db.exerciseSetDao().insert(
-                ExerciseSet(
-                    workoutId = workoutLog.id,
-                    exerciseId = exercise.id,
-                    weight = weight,
-                    reps = reps
-                )
-            )
-            findMatchingSets(workoutLog, exercise)
+            val modifyingExercise = db.exerciseLogDao().getById(id)
+            ULog.d(modifyingExercise)
+            modifyingExercise?.let { setActiveExerciseLog(it) }
+        }
+    }
+
+    fun toggleAddingEntry() {
+        when (_state.value!!.visiblePanel) {
+            VisiblePanel.OVERVIEW, VisiblePanel.WEIGHT_LOG -> {
+                _overviewState.value?.let {
+                    _overviewState.value =
+                            _overviewState.value?.copy(addingEntry = !it.addingEntry)
+                }
+            }
+
+            else -> {}
         }
     }
 
@@ -271,22 +309,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setActiveExercise(exercise: Exercise?) {
-        updateWorkoutOverViewState(
-            _workoutOverViewState.value!!.copy(
-                modifyingExercise = exercise
-            )
-        )
-        findMatchingSets(_workoutOverViewState.value!!.workoutLog, exercise)
+    fun workoutAddEntry(type: WorkoutAddingEntry?) {
+        updateWorkoutOverViewState(_workoutOverViewState.value!!.copy(addingSet = type))
     }
 
-    fun setActiveExerciseById(id: Int) {
+    fun workoutAddExerciseLog(workout: WorkoutLog, exercise: Exercise) {
         viewModelScope.launch(Dispatchers.IO) {
-            val modifyingExercise = db.exerciseDao().get(id)
-            Log.d("Vincent", "$modifyingExercise")
-            setActiveExercise(modifyingExercise)
+            db.exerciseLogDao().insert(
+                ExerciseLog(
+                    id = 0, exerciseId = exercise.id, workoutId = workout.id
+                )
+            )
+            updateWorkoutOverViewState(
+                _workoutOverViewState.value!!.copy(
+                    exerciseLogs = findMatchingSetGroups(workout),
+                    addingSet = null,
+                )
+            )
         }
     }
+
 
     private fun refreshLogs() {
         _overviewState.value?.let {
@@ -294,15 +336,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteExerciseSet(exerciseSet: ExerciseSet) {
-        viewModelScope.launch(Dispatchers.IO) {
-            db.exerciseSetDao().delete(exerciseSet)
-            findMatchingSets(
-                _workoutOverViewState.value!!.workoutLog,
-                _workoutOverViewState.value!!.modifyingExercise,
-            )
-        }
-    }
 
     private fun updateOverviewState(state: OverviewState) {
         viewModelScope.launch(Dispatchers.Main) {
@@ -311,6 +344,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun updateWorkoutOverViewState(state: WorkoutOverViewState) {
+        ULog.d("Updating to new state: $state", stackTraceLevels = 3)
         viewModelScope.launch(Dispatchers.Main) {
             _workoutOverViewState.value = state
         }
@@ -321,4 +355,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _state.value = state
         }
     }
+
+    private suspend fun findMatchingSets(exerciseLog: ExerciseLog?): List<ExerciseSet> {
+        return db.exerciseSetDao().getAllForExerciseLog(exerciseLog?.id ?: 0)
+    }
+
+    private suspend fun findMatchingSetGroups(workoutLog: WorkoutLog): List<ExerciseLogDisplay> {
+        return db.exerciseLogDao().getInWorkoutWithSetCounts(workoutLog.id)
+    }
+
 }

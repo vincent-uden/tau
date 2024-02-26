@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "c82a067e26408e3233eb099b897d1ed8",
+    "identityHash": "61dfabcfe008d07d8f0548d84a9e08cd",
     "entities": [
       {
         "tableName": "weight_logs",
@@ -75,8 +75,8 @@
         "foreignKeys": []
       },
       {
-        "tableName": "exercise_sets",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `created_at` INTEGER NOT NULL, `exercise_id` INTEGER NOT NULL, `workout_id` INTEGER NOT NULL, `reps` INTEGER NOT NULL, `weight` REAL, `time` INTEGER, `comment` TEXT NOT NULL)",
+        "tableName": "exercise_logs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `created_at` INTEGER NOT NULL, `exercise_id` INTEGER NOT NULL, `workout_id` INTEGER NOT NULL)",
         "fields": [
           {
             "fieldPath": "id",
@@ -93,6 +93,50 @@
           {
             "fieldPath": "exerciseId",
             "columnName": "exercise_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workoutId",
+            "columnName": "workout_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "exercise_sets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `created_at` INTEGER NOT NULL, `exercise_id` INTEGER NOT NULL, `exercise_log_id` INTEGER NOT NULL, `workout_id` INTEGER NOT NULL, `reps` INTEGER NOT NULL, `weight` REAL, `time` INTEGER, `comment` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exerciseId",
+            "columnName": "exercise_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exerciseLogId",
+            "columnName": "exercise_log_id",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -172,7 +216,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c82a067e26408e3233eb099b897d1ed8')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '61dfabcfe008d07d8f0548d84a9e08cd')"
     ]
   }
 }
